@@ -8,7 +8,6 @@ namespace TestRunner
 {
     class Program
     {
-        // Счетчики для статистики
         static int passed = 0;
         static int failed = 0;
         static int skipped = 0;
@@ -17,8 +16,6 @@ namespace TestRunner
         {
             Console.WriteLine("=== Запуск автоматизированного тестирования ===\n");
 
-            // Находим все типы, в которых есть методы с атрибутом [Test]
-            // Для корректной работы убедитесь, что в TestRunner добавлена ссылка на проект Tests
             var assembly = Assembly.LoadFrom("/Users/pavelplayerz0redd/Projects/spp-lab-1/spp-lab-1/bin/Debug/net7.0/Tests.dll");
             var testTypes = assembly.GetTypes()
                 .Where(t => t.GetMethods().Any(m => m.GetCustomAttribute<TestAttribute>() != null));
@@ -43,7 +40,6 @@ namespace TestRunner
                     var testAttr = method.GetCustomAttribute<TestAttribute>();
                     var ignoreAttr = method.GetCustomAttribute<IgnoreAttribute>();
 
-                    // 1. Обработка SKIP (пропуск)
                     if (ignoreAttr != null)
                     {
                         PrintResult("SKIP", $"{method.Name} (Причина: {ignoreAttr.Reason})", ConsoleColor.Yellow);
@@ -60,25 +56,22 @@ namespace TestRunner
 
                         try
                         {
-                            // Подготовка (Before)
                             beforeMethod?.Invoke(instance, null);
 
-                            // Выполнение теста
                             object result = method.Invoke(instance, tc.Parameters?.Where(p => p != null).ToArray());
                             if (result is Task task) await task;
 
-                            // 2. Обработка PASS (успех)
                             PrintResult("PASS", $"{method.Name}{paramsInfo}", ConsoleColor.Green);
                             passed++;
                         }
                         catch (TargetInvocationException ex)
                         {
-                            // 3. Обработка FAIL (ошибка логики/проверки)
+
                             if (ex.InnerException is TestFailedException fail)
                             {
                                 PrintResult("FAIL", $"{method.Name}{paramsInfo} -> {fail.Message}", ConsoleColor.Red);
                             }
-                            else // Обработка непредвиденной ошибки в коде
+                            else 
                             {
                                 PrintResult("ERROR", $"{method.Name}{paramsInfo} -> Внезапное исключение: {ex.InnerException?.Message}", ConsoleColor.DarkRed);
                             }
@@ -86,7 +79,6 @@ namespace TestRunner
                         }
                         finally
                         {
-                            // Очистка (After)
                             afterMethod?.Invoke(instance, null);
                         }
                     }
@@ -96,7 +88,6 @@ namespace TestRunner
             PrintSummary();
         }
 
-        // Вспомогательный метод для красивого вывода
         static void PrintResult(string status, string message, ConsoleColor color)
         {
             Console.ForegroundColor = color;
@@ -105,7 +96,6 @@ namespace TestRunner
             Console.WriteLine(message);
         }
 
-        // Вывод итоговой статистики
         static void PrintSummary()
         {
             Console.WriteLine("\n" + new string('=', 40));

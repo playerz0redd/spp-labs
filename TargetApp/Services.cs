@@ -23,7 +23,7 @@ namespace TargetApp
 
         public async Task<int> GetUsersCountAsync()
         {
-            await Task.Delay(50); // Имитация асинхронной работы
+            await Task.Delay(50);
             return _users.Count;
         }
 

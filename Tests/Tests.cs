@@ -17,7 +17,6 @@ namespace Tests
             SharedContext.Set("DefaultName", "Admin");
         }
 
-        // --- УЖЕ СУЩЕСТВУЮЩИЕ ТЕСТЫ ---
 
         [Test(Priority = 1, Description = "Check user addition")]
         public void TestAddUser()
@@ -29,7 +28,7 @@ namespace Tests
 
         [Test]
         [TestCase("Alice", 20)]
-        [TestCase("Bob", 30)] // Это считается за 2 выполнения
+        [TestCase("Bob", 30)] 
         public void TestMultipleUsers(string name, int age)
         {
             _service.AddUser(new User { Username = name, Age = age });
@@ -55,41 +54,36 @@ namespace Tests
         [Ignore(Reason = "Work in progress")]
         public void IgnoredTest() { }
 
-        // --- НОВЫЕ ТЕСТЫ ДЛЯ КОЛИЧЕСТВА И ДЕМОНСТРАЦИИ FAIL ---
 
         [Test]
         public void TestContainsName()
         {
             string name = "SuperAdmin";
-            Assert.Contains("Admin", name); // Успех
+            Assert.Contains("Admin", name);
         }
 
         [Test]
         public void TestNotEqual()
         {
-            Assert.AreNotEqual("Guest", SharedContext.Get<string>("DefaultName")); // Успех
+            Assert.AreNotEqual("Guest", SharedContext.Get<string>("DefaultName"));
         }
 
         [Test]
         public void TestEmptyOnStart()
         {
-            // Используем Assert.IsFalse
-            Assert.IsFalse(_service.IsUsernameTaken("Anyone"), "Service should be empty"); // Успех
+            Assert.IsFalse(_service.IsUsernameTaken("Anyone"), "Service should be empty");
         }
 
-        // --- ТЕСТЫ, КОТОРЫЕ ДОЛЖНЫ УПАСТЬ (FAIL) ---
 
         [Test]
         public void TestFailOnPurpose()
         {
-            // Этот тест упадет, так как мы ожидаем 10, а будет 0
             Assert.AreEqual(10, 0);
         }
 
         [Test]
         public void TestUserNotFound_Fail()
         {
-            // Ожидаем, что пользователь есть, но его нет
             Assert.IsTrue(_service.IsUsernameTaken("NonExistentUser"), "User should have been found");
         }
 
@@ -97,13 +91,12 @@ namespace Tests
         public void TestNullCheck_Fail()
         {
             User user = null;
-            Assert.IsNotNull(user); // Упадет здесь
+            Assert.IsNotNull(user);
         }
 
         [Test]
         public void TestWrongException_Fail()
         {
-            // Ожидаем NullReferenceException, но код бросит ArgumentException
             Assert.Throws<NullReferenceException>(() =>
                 _service.AddUser(new User { Username = "", Age = 20 }));
         }
