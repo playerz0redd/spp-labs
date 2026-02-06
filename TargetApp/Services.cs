@@ -1,12 +1,32 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
-public class DataService
+namespace TargetApp
 {
-    public int Add(int a, int b) => a + b;
-
-    public async Task<string> FetchDataAsync()
+    public class User
     {
-        await Task.Delay(100); // Имитация долгой работы
-        return "DataLoaded";
+        public string Username { get; set; }
+        public int Age { get; set; }
+    }
+
+    public class UserService
+    {
+        private List<User> _users = new List<User>();
+
+        public void AddUser(User user)
+        {
+            if (string.IsNullOrEmpty(user.Username)) throw new ArgumentException("Name empty");
+            if (user.Age < 18) throw new ArgumentOutOfRangeException("Too young");
+            _users.Add(user);
+        }
+
+        public async Task<int> GetUsersCountAsync()
+        {
+            await Task.Delay(50); // Имитация асинхронной работы
+            return _users.Count;
+        }
+
+        public bool IsUsernameTaken(string name) => _users.Exists(u => u.Username == name);
     }
 }

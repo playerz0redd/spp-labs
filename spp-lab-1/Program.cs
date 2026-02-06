@@ -2,93 +2,124 @@
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
-using System.IO;
+using TestFramework;
 
-class Program
+namespace TestRunner
 {
-    static void Main(string[] args)
+    class Program
     {
+        // Счетчики для статистики
+        static int passed = 0;
+        static int failed = 0;
+        static int skipped = 0;
 
-        Assembly assembly;
-        try
+        static async Task Main(string[] args)
         {
-            assembly = Assembly.LoadFrom("/Users/pavelplayerz0redd/Projects/spp-lab-1/spp-lab-1/bin/Debug/net7.0/Tests.dll");
-        }
-        catch (FileNotFoundException)
-        {
-            Console.WriteLine($"Error: MyTests.dll not found");
-            return;
-        }
-        // -----------------------
+            Console.WriteLine("=== Запуск автоматизированного тестирования ===\n");
 
-        var context = new TestContext();
+            // Находим все типы, в которых есть методы с атрибутом [Test]
+            // Для корректной работы убедитесь, что в TestRunner добавлена ссылка на проект Tests
+            var assembly = Assembly.LoadFrom("/Users/pavelplayerz0redd/Projects/spp-lab-1/spp-lab-1/bin/Debug/net7.0/Tests.dll");
+            var testTypes = assembly.GetTypes()
+                .Where(t => t.GetMethods().Any(m => m.GetCustomAttribute<TestAttribute>() != null));
 
-        Console.WriteLine("Starting Test Run:");
-
-        foreach (var type in assembly.GetTypes().Where(t => t.GetCustomAttribute<TestClassAttribute>() != null))
-        {
-            Console.WriteLine($"\n--- Running tests in {type.Name} ---");
-            var instance = Activator.CreateInstance(type);
-            var methods = type.GetMethods();
-
-            // Find Setup and TearDown methods once per class
-            var setupMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<SetupAttribute>() != null);
-            var tearDownMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<TearDownAttribute>() != null);
-
-            foreach (var method in methods.Where(m => m.GetCustomAttribute<MyTestAttribute>() != null || m.GetCustomAttributes<TestCaseAttribute>().Any()))
+            foreach (var type in testTypes)
             {
-                try
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"--- Тестовый класс: {type.Name} ---");
+                Console.ResetColor();
+
+                var instance = Activator.CreateInstance(type);
+
+                var beforeMethod = type.GetMethods().FirstOrDefault(m => m.GetCustomAttribute<BeforeAttribute>() != null);
+                var afterMethod = type.GetMethods().FirstOrDefault(m => m.GetCustomAttribute<AfterAttribute>() != null);
+
+                var testMethods = type.GetMethods()
+                    .Where(m => m.GetCustomAttribute<TestAttribute>() != null)
+                    .OrderBy(m => m.GetCustomAttribute<TestAttribute>().Priority);
+
+                foreach (var method in testMethods)
                 {
-                    // Setup (requires context injection)
-                    if (setupMethod != null)
+                    var testAttr = method.GetCustomAttribute<TestAttribute>();
+                    var ignoreAttr = method.GetCustomAttribute<IgnoreAttribute>();
+
+                    // 1. Обработка SKIP (пропуск)
+                    if (ignoreAttr != null)
                     {
-                        if (setupMethod.GetParameters().Any()) setupMethod.Invoke(instance, new[] { context });
-                        else setupMethod.Invoke(instance, null);
+                        PrintResult("SKIP", $"{method.Name} (Причина: {ignoreAttr.Reason})", ConsoleColor.Yellow);
+                        skipped++;
+                        continue;
                     }
 
-                    // Handle TestCase attributes
-                    var testCases = method.GetCustomAttributes<TestCaseAttribute>();
-                    if (testCases.Any())
+                    var testCases = method.GetCustomAttributes<TestCaseAttribute>().ToList();
+                    if (!testCases.Any()) testCases.Add(new TestCaseAttribute(null));
+
+                    foreach (var tc in testCases)
                     {
-                        foreach (var tc in testCases)
+                        string paramsInfo = tc.Parameters != null ? $"({string.Join(", ", tc.Parameters)})" : "";
+
+                        try
                         {
-                            ExecuteTestMethod(method, instance, tc.Params);
+                            // Подготовка (Before)
+                            beforeMethod?.Invoke(instance, null);
+
+                            // Выполнение теста
+                            object result = method.Invoke(instance, tc.Parameters?.Where(p => p != null).ToArray());
+                            if (result is Task task) await task;
+
+                            // 2. Обработка PASS (успех)
+                            PrintResult("PASS", $"{method.Name}{paramsInfo}", ConsoleColor.Green);
+                            passed++;
+                        }
+                        catch (TargetInvocationException ex)
+                        {
+                            // 3. Обработка FAIL (ошибка логики/проверки)
+                            if (ex.InnerException is TestFailedException fail)
+                            {
+                                PrintResult("FAIL", $"{method.Name}{paramsInfo} -> {fail.Message}", ConsoleColor.Red);
+                            }
+                            else // Обработка непредвиденной ошибки в коде
+                            {
+                                PrintResult("ERROR", $"{method.Name}{paramsInfo} -> Внезапное исключение: {ex.InnerException?.Message}", ConsoleColor.DarkRed);
+                            }
+                            failed++;
+                        }
+                        finally
+                        {
+                            // Очистка (After)
+                            afterMethod?.Invoke(instance, null);
                         }
                     }
-                    else
-                    {
-                        ExecuteTestMethod(method, instance, null);
-                    }
-
-                    Console.WriteLine($"[PASS] {method.Name}");
-
-                }
-                catch (TargetInvocationException ex)
-                {
-                    // Перехват внутреннего исключения (MyAssertException)
-                    Console.WriteLine($"[FAIL] {method.Name}: {ex.InnerException?.Message}");
-                }
-                finally
-                {
-                    // TearDown (очистка)
-                    tearDownMethod?.Invoke(instance, null);
                 }
             }
-        }
-        Console.WriteLine("\n--- Test Run Completed ---");
-    }
 
-    // Хелпер для обработки асинхронных методов
-    private static void ExecuteTestMethod(MethodInfo method, object instance, object[] parameters)
-    {
-        if (method.ReturnType == typeof(Task) || (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>)))
-        {
-            var task = (Task)method.Invoke(instance, parameters);
-            task.Wait();
+            PrintSummary();
         }
-        else
+
+        // Вспомогательный метод для красивого вывода
+        static void PrintResult(string status, string message, ConsoleColor color)
         {
-            method.Invoke(instance, parameters);
+            Console.ForegroundColor = color;
+            Console.Write($"[{status}] ");
+            Console.ResetColor();
+            Console.WriteLine(message);
+        }
+
+        // Вывод итоговой статистики
+        static void PrintSummary()
+        {
+            Console.WriteLine("\n" + new string('=', 40));
+            Console.WriteLine("ИТОГИ ТЕСТИРОВАНИЯ:");
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"Пройдено: {passed}");
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Провалено: {failed}");
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"Пропущено: {skipped}");
+
         }
     }
 }

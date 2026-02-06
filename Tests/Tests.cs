@@ -1,110 +1,114 @@
-﻿using System.Threading.Tasks;
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using TestFramework;
+using TargetApp;
 
-[TestClass]
-public class DemoTests
+namespace Tests
 {
-    private DataService _service;
-
-    [Setup]
-    public void Init()
+    public class UserTests
     {
-        _service = new DataService();
-    }
+        private UserService _service;
 
-    // 1. PASS: Обычный тест на сложение двух положительных чисел
-    [MyTest]
-    public void Test_Add_Positive()
-    {
-        Assert.AreEqual(15, _service.Add(5, 10));
-    }
+        [Before]
+        public void Setup()
+        {
+            _service = new UserService();
+            SharedContext.Set("DefaultName", "Admin");
+        }
 
-    // 2. FAIL: Ожидаем -1, а будет -2.
-    [MyTest]
-    public void Test_Add_Negative_ShouldFail()
-    {
-        Assert.AreEqual(-1, _service.Add(-5, 3));
-    }
+        // --- УЖЕ СУЩЕСТВУЮЩИЕ ТЕСТЫ ---
 
-    // 3. PASS: Сложение с нулем
-    [MyTest]
-    public void Test_Add_WithZero()
-    {
-        Assert.AreEqual(100, _service.Add(0, 100));
-    }
+        [Test(Priority = 1, Description = "Check user addition")]
+        public void TestAddUser()
+        {
+            var name = SharedContext.Get<string>("DefaultName");
+            _service.AddUser(new User { Username = name, Age = 25 });
+            Assert.IsTrue(_service.IsUsernameTaken(name));
+        }
 
-    // 4. PASS: Проверка асинхронного метода
-    [MyTest]
-    public async Task Test_Async_FetchData()
-    {
-        string result = await _service.FetchDataAsync();
-        Assert.AreEqual("DataLoaded", result);
-    }
+        [Test]
+        [TestCase("Alice", 20)]
+        [TestCase("Bob", 30)] // Это считается за 2 выполнения
+        public void TestMultipleUsers(string name, int age)
+        {
+            _service.AddUser(new User { Username = name, Age = age });
+            Assert.IsNotNull(name);
+        }
 
-    // 5. FAIL: Ожидаем пустую строку, а получаем int.
-    [MyTest]
-    public void Test_Add_TypeCheck_ShouldFail()
-    {
-        int result = _service.Add(1, 1);
-        Assert.IsType<string>((object)result);
-    }
+        [Test]
+        public void TestValidation()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _service.AddUser(new User { Username = "Kid", Age = 10 }));
+        }
 
-    // 6. PASS: Проверка, что объект не null
-    [MyTest]
-    public void Test_Service_IsNotNull()
-    {
-        Assert.IsNotNull(_service);
-    }
+        [Test]
+        public async Task TestAsyncCount()
+        {
+            _service.AddUser(new User { Username = "User1", Age = 20 });
+            int count = await _service.GetUsersCountAsync();
+            Assert.AreEqual(1, count);
+        }
 
-    // 7. FAIL: Проверка на null
-    [MyTest]
-    public void Test_NullCheck_ShouldFail()
-    {
-        object obj = "I am not null";
-        Assert.IsNull(obj);
-    }
+        [Test]
+        [Ignore(Reason = "Work in progress")]
+        public void IgnoredTest() { }
 
-    // 8. PASS: Сравнение строк (Contains)
-    [MyTest]
-    public void Test_StringContains()
-    {
-        Assert.Contains("HelloWorld", "World");
-    }
+        // --- НОВЫЕ ТЕСТЫ ДЛЯ КОЛИЧЕСТВА И ДЕМОНСТРАЦИИ FAIL ---
 
-    // 9. PASS: Проверка условия (GreaterThan)
-    [MyTest]
-    public void Test_GreaterThan()
-    {
-        Assert.GreaterThan(20, 10);
-    }
+        [Test]
+        public void TestContainsName()
+        {
+            string name = "SuperAdmin";
+            Assert.Contains("Admin", name); // Успех
+        }
 
-    // 10. FAIL: Проверка условия (LessThan)
-    [MyTest]
-    public void Test_LessThan_ShouldFail()
-    {
-        Assert.LessThan(20, 10);
-    }
+        [Test]
+        public void TestNotEqual()
+        {
+            Assert.AreNotEqual("Guest", SharedContext.Get<string>("DefaultName")); // Успех
+        }
 
-    // Дополнительный 11-й тест для запаса
-    [MyTest]
-    public void Test_AreNotEqual_Pass()
-    {
-        Assert.AreNotEqual(1, 2);
-    }
+        [Test]
+        public void TestEmptyOnStart()
+        {
+            // Используем Assert.IsFalse
+            Assert.IsFalse(_service.IsUsernameTaken("Anyone"), "Service should be empty"); // Успех
+        }
 
+        // --- ТЕСТЫ, КОТОРЫЕ ДОЛЖНЫ УПАСТЬ (FAIL) ---
 
-    // Набор с TestCase остается как демонстрация функционала
-    [TestCase(1, 1, 2)]
-    [TestCase(-1, 1, 0)]
-    [TestCase(-10, -20, -25)] // FAIL
-    public void Test_Add_Comprehensive(int a, int b, int expected)
-    {
-        Assert.AreEqual(expected, _service.Add(a, b));
-    }
+        [Test]
+        public void TestFailOnPurpose()
+        {
+            // Этот тест упадет, так как мы ожидаем 10, а будет 0
+            Assert.AreEqual(10, 0);
+        }
 
+        [Test]
+        public void TestUserNotFound_Fail()
+        {
+            // Ожидаем, что пользователь есть, но его нет
+            Assert.IsTrue(_service.IsUsernameTaken("NonExistentUser"), "User should have been found");
+        }
 
-    [TearDown]
-    public void Cleanup()
-    {
+        [Test]
+        public void TestNullCheck_Fail()
+        {
+            User user = null;
+            Assert.IsNotNull(user); // Упадет здесь
+        }
+
+        [Test]
+        public void TestWrongException_Fail()
+        {
+            // Ожидаем NullReferenceException, но код бросит ArgumentException
+            Assert.Throws<NullReferenceException>(() =>
+                _service.AddUser(new User { Username = "", Age = 20 }));
+        }
+
+        [After]
+        public void Teardown() => SharedContext.Clear();
     }
 }
